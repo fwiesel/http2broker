@@ -29,11 +29,12 @@ class Client:
 
         return channel
 
-    def __call__(self, handler):
-        return Channel(self, handler)
+    def __call__(self, handler, session_id):
+        return Channel(self, handler, session_id)
 
 class Channel:
-    def __init__(self, client, handler):
+    def __init__(self, client, handler, session_id):
+        self.session_id = session_id
         self.client = client
         self.handler = handler
         self.handler.eof = False
@@ -65,7 +66,7 @@ class Channel:
         exchange_type = self.client._config.get('exchange_type', 'topic')
         self.exchange = yield from self.channel.declare_exchange(self.client._config.get('exchange_name', "amq.%s" % exchange_type), exchange_type, durable=False, auto_delete=True)
 
-        self.queue = yield from self.channel.declare_queue('test.queue', durable=False, auto_delete=True) # , arguments={'x-expires': 300})
+        self.queue = yield from self.channel.declare_queue(self.session_id, durable=False, auto_delete=True) # , arguments={'x-expires': 300})
 
         path = path.decode('utf-8').split('/', 2)
         pattern = urllib.parse.unquote(path[-1]) if len(path) == 3 else '#'

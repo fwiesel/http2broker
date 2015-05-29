@@ -6,13 +6,16 @@ sys.path.append('.')
 import ssl
 import logging
 from http2amqp.handler import Handler
+from http2amqp.config import get_config
 import nghttp2
 
 LOG = logging.getLogger('http2amqp')
 
+
 def main():
     logging.basicConfig(level=logging.WARNING)
     LOG.setLevel(logging.DEBUG)
+    print(get_config())
     ctx = ssl.SSLContext(ssl.PROTOCOL_SSLv23)
     ctx.options = ssl.OP_ALL | ssl.OP_NO_SSLv2 | ssl.OP_NO_SSLv3
     ctx.load_cert_chain('server.crt', 'server.key')
