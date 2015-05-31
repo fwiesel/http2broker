@@ -5,10 +5,10 @@ sys.path.append('.')
 
 import ssl
 import logging
-from http2amqp.request import Request
+from http2broker.request import Request
 import nghttp2
 
-LOG = logging.getLogger('http2amqp')
+LOG = logging.getLogger('http2broker')
 
 
 def main():

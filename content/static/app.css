@@ -1,0 +1,67 @@
+* {
+  /* So 100% means 100% */
+  box-sizing: border-box;
+}
+
+html {
+    font-family: Sans-Serif;
+    height: 100vh;
+    width: 100vw;
+}
+
+body {
+    height: 100%;
+}
+
+.box {
+    display: inline-block;
+    background: lightgray;
+    border-style: solid;
+    border-width: 3px;
+    border-color: lightgray;
+    margin: 5px;
+}
+
+.box:hover {
+    color: black;
+    border-style: outset;
+}
+
+.box:active, .box[state] {
+    color: green;
+    background: lightgray;
+    border-style: inset;
+}
+
+#stream_table {
+    display: block;
+    font-family: Monospace;
+    background: black;
+    color: lightgray;
+    border-style: inset;
+    border-width: medium;
+    width: 90%;
+    min-width: 100px;
+    min-height: 100px;
+    overflow-x: auto;
+    overflow-y: auto;
+    min-height: 100px;
+    max-height: 50vh;
+}
+
+#stream_table th, #stream_table td {
+    border: none;
+    white-space: nowrap;
+    padding: 0px 2px;
+}
+
+#stream_table th:first-child, #stream_table td:first-child {
+    width: 1px;
+    color: lightblue;
+    border-right: dotted 1px white;
+}
+
+footer {
+    position: absolute;
+    bottom:0
+}

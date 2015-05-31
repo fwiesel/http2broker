@@ -4,6 +4,7 @@ import nghttp2
 import asynqp
 import asyncio
 import urllib
+import io
 
 LOG = logging.getLogger(__name__)
 
@@ -47,12 +48,6 @@ class Channel:
         self.exchange = None
         asyncio.async(self.read_amqp())
 
-    @staticmethod
-    def message_proc(msg):
-        data = msg.body
-        msg.ack
-        return data
-
     def __call__(self, n):
         items = len(self.buf)
         message = self.buf.popleft() if items > 0 else None
@@ -63,7 +58,14 @@ class Channel:
             if items > 1:
                 self.request.resume()
             message.ack()
-            return message.body, nghttp2.DATA_EOF if self.request.eof else nghttp2.DATA_OK
+            body_in = io.BytesIO(message.body)
+            body_out = io.BytesIO()
+            for line in body_in:
+                body_out.write(b'data: ')
+                body_out.write(line)
+                body_out.write(b"\n")
+            body_out.write(b"\n")
+            return body_out.getvalue(), nghttp2.DATA_EOF if self.request.eof else nghttp2.DATA_OK
 
     @asyncio.coroutine
     def read_amqp(self):
@@ -73,7 +75,7 @@ class Channel:
         self.exchange = yield from self.channel.declare_exchange(self.client.config.get('exchange_name', "amq.%s" % exchange_type), exchange_type, durable=False, auto_delete=True)
         self.queue = yield from self.channel.declare_queue(str(self.request.session_id), durable=False, auto_delete=True) # , arguments={'x-expires': 300})
 
-        path = self.request.path.decode('utf-8').split('/', 2)
+        path = self.request.path.split('/', 2)
         pattern = urllib.parse.unquote(path[-1]) if len(path) == 3 else '#'
         LOG.debug('Subscribing to %s', pattern)
 

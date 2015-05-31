@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<head lang="en">
+    <meta charset="UTF-8">
+    <title>
+    @def title():
+    @end
+    @title()
+    </title>
+    @def head():
+    @end
+    @head()
+    <style>
+    @include('static/app.css')
+    </style>
+</head>
+
+<body>
+
+<header>
+@def header():
+@end
+@header()
+</header>
+
+<main>
+@def content():
+@end
+@content()
+</main>
+
+<footer>
+@def footer():
+@end
+@footer()
+</footer>
+
+</body>
+</html>

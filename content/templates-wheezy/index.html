@@ -1,0 +1,38 @@
+@extends("shared/master.html")
+@require(backends)
+
+@def head():
+    <script type="text/javascript" src="static/app.js"></script>
+@end
+
+@def title():
+    HTTP2 Broker - Index
+@end
+
+@def content():
+    <h1>HTTP2 Broker</h1>
+    <div id="backendbb">
+    <h2>Backends</h2>
+    <div id="backend" class="bb">
+    @if backends:
+        @for name, backend in backends.items():
+            <div class="box" id="@name" onclick="select_backend(this)">
+                <div>
+                @name
+                </div>
+                <div>
+                @{backend.get('description', backend['type'])}
+                </div>
+            </div>
+        @end
+    @end
+    </div>
+    </div>
+    <div id="streambb" class="bb">
+    <h2>Messages</h2>
+    <table id="stream_table">
+        <thead><tr><th>Source</th><th>Message</th></tr></thead>
+        <tbody id="stream"></tbody>
+    </table>
+    </div>
+@end

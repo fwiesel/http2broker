@@ -2,7 +2,7 @@ import logging
 from configparser import ConfigParser
 from os import path
 
-LOG = logging.getLogger('http2amqp')
+LOG = logging.getLogger('http2broker')
 
 CONFIG = [None]
 
