@@ -12,6 +12,9 @@ LOG = logging.getLogger(__name__)
 def create(config):
     return Client(config)
 
+def get(environ, start_response):
+    pass
+
 class Client:
     def __init__(self, config):
         self._config = config

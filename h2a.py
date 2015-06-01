@@ -5,7 +5,7 @@ sys.path.append('.')
 
 import ssl
 import logging
-from http2broker.request import Request
+from http2broker.session import Session
 import nghttp2
 
 LOG = logging.getLogger('http2broker')
@@ -23,7 +23,7 @@ def main():
 
     ctx.verify_mode = ssl.CERT_OPTIONAL
 
-    server = nghttp2.HTTP2Server(('127.0.0.1', 8443), Request, ssl=ctx)
+    server = nghttp2.HTTP2Server(('127.0.0.1', 8443), Session, ssl=ctx)
     server.serve_forever()
 
 
