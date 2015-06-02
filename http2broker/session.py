@@ -14,6 +14,9 @@ from wheezy.template.loader import FileLoader
 
 from routes import Mapper
 from importlib import import_module
+import mimetypes
+
+mimetypes.init()
 
 LOG = logging.getLogger(__name__)
 
@@ -41,8 +44,10 @@ def not_found(request, start_response):
     return None
 
 def static_content(request, start_response):
-    with open("content%s" % request.path, 'r') as f:
-        start_response(200, [('content-type', 'text/javascript'), ('cache-control', 'public')])
+    local_path = "content%s" % request.path
+    with open(local_path, 'r') as f:
+        mimetype, _ = mimetypes.guess_type(local_path)
+        start_response(200, [('content-type', mimetype), ('cache-control', 'public')])
         return f.read()
 
 class Request(nghttp2.BaseRequestHandler):
