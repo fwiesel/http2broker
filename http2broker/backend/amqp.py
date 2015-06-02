@@ -10,12 +10,9 @@ LOG = logging.getLogger(__name__)
 
 
 def create(config):
-    return Client(config)
+    return Controller(config)
 
-def get(environ, start_response):
-    pass
-
-class Client:
+class Controller:
     def __init__(self, config):
         self._config = config
         self._connection = None
@@ -37,7 +34,8 @@ class Client:
 
         return channel
 
-    def __call__(self, request):
+    def get(self, request, start_response):
+        start_response(200, [('content-type', 'text/event-stream'), ('cache-control', 'no-cache')])
         return Channel(self, request)
 
 class Channel:
@@ -78,8 +76,7 @@ class Channel:
         self.exchange = yield from self.channel.declare_exchange(self.client.config.get('exchange_name', "amq.%s" % exchange_type), exchange_type, durable=False, auto_delete=True)
         self.queue = yield from self.channel.declare_queue(str(self.request.session_id), durable=False, auto_delete=True) # , arguments={'x-expires': 300})
 
-        path = self.request.path.split('/', 2)
-        pattern = urllib.parse.unquote(path[-1]) if len(path) == 3 else '#'
+        pattern = urllib.parse.unquote(self.request.match.get('pattern', '#'))
         LOG.debug('Subscribing to %s', pattern)
 
         yield from self.queue.bind(self.exchange, pattern)

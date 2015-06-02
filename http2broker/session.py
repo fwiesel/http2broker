@@ -13,6 +13,7 @@ from wheezy.template.ext.core import CoreExtension
 from wheezy.template.loader import FileLoader
 
 from routes import Mapper
+from importlib import import_module
 
 LOG = logging.getLogger(__name__)
 
@@ -70,37 +71,35 @@ def generate_routes():
     m.connect('/', handler=index)
     m.connect('/static/{filename:.*?}', handler=static_content)
     m.connect('/favicon.ico', handler=favicon)
-    for (k, v) in get_config().items():
-        module = __import__(v['module'])
+    for (k, config) in get_config().items():
+        config = deepcopy(config)
+        backend_module = config.pop('module')
+        LOG.warn("Configuring %s", backend_module)
+        module = import_module(backend_module)
         try:
-            m.connect("/q/%s" % k, conditions=dict(method='GET'), handler=module.get)
-        except AttributeError:
-            pass
-        try:
-            m.connect("/q/%s" % k, conditions=dict(method='PUT'), handler=module.put)
-        except AttributeError:
-            pass
-        try:
-            m.connect("/q/%s" % k, conditions=dict(method='POST'), handler=module.post)
-        except AttributeError:
-            pass
-        try:
-            m.connect("/q/%s" % k, conditions=dict(method='DELETE'), handler=module.delete)
-        except AttributeError:
-            pass
-
+            backend = module.create(config)
+            for method in ['GET', 'PUT', 'POST', 'DELETE']:
+                try:
+                    m.connect("/q/%s" % k, conditions=dict(method=method), handler=getattr(backend, method.lower()))
+                    m.connect("/q/%s/{pattern:.*?}" % k, conditions=dict(method=method), handler=getattr(backend, method.lower()))
+                except AttributeError:
+                    pass
+        except AttributeError as e:
+            LOG.error("Could not create controller for %s: %s", k, backend_module)
+            LOG.error(e)
     return m
+
+routes = generate_routes()
 
 class Session(Request):
     SESSION_ID = 'SSID='
     backend = {}
 
-    routes = generate_routes()
-
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.session_id = None
         self.response = {}
+        self.match = None
 
 
     def get_backend(self, name):
@@ -148,18 +147,9 @@ class Session(Request):
         self.path = self.path.decode('utf-8')
 
         self._setup_session()
-        result = Session.routes.match(self.path)
-        if result:
-            self.response['body'] = result['handler'](self, self.start_response)
-        else:
-            parts = self.path.split('/', 3)
-            backend = self.get_backend(parts[1])
-
-            if backend:
-                body = backend(self)
-                if body:
-                    self.start_response(200, [('content-type', 'text/event-stream'), ('cache-control', 'no-cache')])
-                    self.response['body'] = body
+        self.match = routes.match(self.path)
+        if self.match:
+            self.response['body'] = self.match['handler'](self, self.start_response)
 
         return self.send_response(**self.response)
 

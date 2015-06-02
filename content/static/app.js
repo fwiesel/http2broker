@@ -7,7 +7,7 @@ function select_backend(item) {
     }
     else {
         item.setAttribute('state', 'selected');
-        var source = new EventSource('/'.concat(item.id));
+        var source = new EventSource('/q/'.concat(item.id));
         var streamNode = document.getElementById('stream');
         var tableNode = streamNode.parentNode;
         source.onmessage = function(event) {
