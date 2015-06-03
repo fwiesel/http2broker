@@ -2,6 +2,7 @@ import nghttp2
 import logging
 import asyncio
 import sys
+import os, time
 from base64 import b64decode
 from copy import deepcopy
 from .config import get_config
@@ -27,15 +28,18 @@ template_engine = Engine(
     extensions=[CoreExtension()]
 )
 
+def last_modified(path):
+    return ('last-modified', time.strftime("%a, %d %b %Y %H:%M:%S %Z", time.gmtime(os.path.getmtime(path))))
+
 def index(request, start_response):
     template = template_engine.get_template('index.html')
     if template:
         request._setup_session()
-        start_response(200, [('content-type', 'text/html'), ('cache-control', 'public')])
+        start_response(200, [('content-type', 'text/html'), ('cache-control', 'public, must-revalidate, max-age=60')])
         return template.render({'backends': get_config()})
 
 def favicon(request, start_response):
-    start_response(200, [('content-type', 'image-x-icon'), ('cache-control', 'public')])
+    start_response(200, [('content-type', 'image-x-icon'), ('cache-control', 'public, max-age=432000000'), last_modified(__file__)])
     return b64decode('iVBORw0KGgoAAAANSUhEUgAAABAAAAAQEAYAAABPYyMiAAAABmJLR0T///////8JWPfcAAAACXBIWXMAAABIAAAASABGyWs+AAAAF0lEQVRIx2NgGAWjYBSMglEwCkbBSAcACBAAAeaR9cIAAAAASUVORK5CYII=')
 
 
@@ -47,7 +51,7 @@ def static_content(request, start_response):
     local_path = "content%s" % request.path
     with open(local_path, 'r') as f:
         mimetype, _ = mimetypes.guess_type(local_path)
-        start_response(200, [('content-type', mimetype), ('cache-control', 'public')])
+        start_response(200, [('content-type', mimetype), ('cache-control', 'public, max-age=60'), last_modified(local_path)])
         return f.read()
 
 class Request(nghttp2.BaseRequestHandler):
