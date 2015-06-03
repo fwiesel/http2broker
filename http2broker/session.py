@@ -2,9 +2,9 @@ import nghttp2
 import logging
 import asyncio
 import sys
-import os, time
+import os, time, io
 from base64 import b64decode
-from copy import deepcopy
+from copy import copy, deepcopy
 from .config import get_config
 from datetime import timedelta, datetime
 from uuid import uuid4 as uuid
@@ -29,17 +29,32 @@ template_engine = Engine(
 )
 
 def last_modified(path):
-    return ('last-modified', time.strftime("%a, %d %b %Y %H:%M:%S %Z", time.gmtime(os.path.getmtime(path))))
+    return (b'last-modified', time.strftime("%a, %d %b %Y %H:%M:%S %Z", time.gmtime(os.path.getmtime(path))))
 
 def index(request, start_response):
     template = template_engine.get_template('index.html')
     if template:
+        _status = None
+        _headers = None
+
+        def local_start(status, headers):
+            nonlocal _status
+            nonlocal _headers
+            _status = status
+            _headers.extend(headers)
+
+        for path in []: # ['/static/app.js', '/static/app.css']:
+            _status = 404
+            _headers = copy(request.response['headers'])
+            request.match['filename'] = path
+            body = static_content(request, local_start)
+            request.push(path, status=_status, headers=_headers, body=body)
         request._setup_session()
-        start_response(200, [('content-type', 'text/html'), ('cache-control', 'public, must-revalidate, max-age=60')])
+        start_response(200, [(b'content-type', 'text/html'), (b'cache-control', b'public, must-revalidate, max-age=60')])
         return template.render({'backends': get_config()})
 
 def favicon(request, start_response):
-    start_response(200, [('content-type', 'image-x-icon'), ('cache-control', 'public, max-age=432000000'), last_modified(__file__)])
+    start_response(200, [(b'content-type', b'image-x-icon'), (b'cache-control', b'public, max-age=432000000'), last_modified(__file__)])
     return b64decode('iVBORw0KGgoAAAANSUhEUgAAABAAAAAQEAYAAABPYyMiAAAABmJLR0T///////8JWPfcAAAACXBIWXMAAABIAAAASABGyWs+AAAAF0lEQVRIx2NgGAWjYBSMglEwCkbBSAcACBAAAeaR9cIAAAAASUVORK5CYII=')
 
 
@@ -48,11 +63,11 @@ def not_found(request, start_response):
     return None
 
 def static_content(request, start_response):
-    local_path = "content%s" % request.path
-    with open(local_path, 'r') as f:
-        mimetype, _ = mimetypes.guess_type(local_path)
-        start_response(200, [('content-type', mimetype), ('cache-control', 'public, max-age=60'), last_modified(local_path)])
-        return f.read()
+    local_path = "content%s" % request.match['filename']
+    mimetype, _ = mimetypes.guess_type(local_path)
+    start_response(200, [(b'content-type', mimetype), (b'cache-control', b'public, max-age=60'), last_modified(local_path)])
+    f = io.open(local_path, 'rb', io.DEFAULT_BUFFER_SIZE)
+    return f
 
 class Request(nghttp2.BaseRequestHandler):
     def __init__(self, *args, **kwargs):
@@ -78,7 +93,7 @@ class Request(nghttp2.BaseRequestHandler):
 def generate_routes():
     m = Mapper()
     m.connect('/', handler=index)
-    m.connect('/static/{filename:.*?}', handler=static_content)
+    m.connect('{filename:/static/.*?}', handler=static_content)
     m.connect('/favicon.ico', handler=favicon)
     for (k, config) in get_config().items():
         config = deepcopy(config)
@@ -150,13 +165,8 @@ class Session(Request):
         self.response['headers'].extend(headers)
 
     def on_headers(self):
-        self.method = self.method.decode('ascii')
-        self.scheme = self.scheme.decode('ascii')
-        self.host = self.host.decode('utf-8')
-        self.path = self.path.decode('utf-8')
-
         self._setup_session()
-        self.match = routes.match(self.path)
+        self.match = routes.match(self.path.decode('utf-8'))
         if self.match:
             self.response['body'] = self.match['handler'](self, self.start_response)
 
