@@ -17,11 +17,11 @@
     @if backends:
         @for name, backend in backends.items():
             <div class="box" id="@name" onclick="select_backend(this)">
-                <div>
+                <div class="tooltip">
                 @name
-                </div>
-                <div>
-                @{backend.get('description', backend['module'])}
+                    <span>
+                    @{backend.get('description', backend['module'])}
+                    </span>
                 </div>
             </div>
         @end
