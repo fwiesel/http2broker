@@ -73,8 +73,8 @@ class Channel:
         self.channel = yield from self.client.open_channel()
 
         exchange_type = self.client.config.get('exchange_type', 'topic')
-        self.exchange = yield from self.channel.declare_exchange(self.client.config.get('exchange_name', "amq.%s" % exchange_type), exchange_type, durable=False, auto_delete=True)
-        self.queue = yield from self.channel.declare_queue(str(self.request.session_id), durable=False, auto_delete=True) # , arguments={'x-expires': 300})
+        self.exchange = yield from self.channel.declare_exchange(self.client.config.get('exchange_name', "amq.%s" % exchange_type), exchange_type, durable=False, auto_delete=False, arguments={})
+        self.queue = yield from self.channel.declare_queue(str(self.request.session_id), durable=False, auto_delete=False, arguments={'x-expires': 5*60*1000})
 
         pattern = urllib.parse.unquote(self.request.match.get('pattern', '#'))
         LOG.debug('Subscribing to %s', pattern)
