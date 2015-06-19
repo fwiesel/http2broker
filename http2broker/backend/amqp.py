@@ -5,12 +5,54 @@ import asynqp
 import asyncio
 import urllib
 import io
+from fnmatch import fnmatch
 
 LOG = logging.getLogger(__name__)
 
 
 def create(config):
     return Controller(config)
+
+
+class Serialiser(object):
+    pass
+
+class TextEventStream(Serialiser):
+    @staticmethod
+    def content_type():
+        return 'text/event-stream'
+
+    @staticmethod
+    def serialise(message):
+        body_in = io.BytesIO(message.body)
+        out = bytearray()
+        for line in body_in:
+            out.extend(b'data: ')
+            out.extend(line)
+            out.extend(b"\n")
+        out.extend(b"\n")
+        return out
+
+class PlainTextStream(Serialiser):
+    @staticmethod
+    def content_type():
+        return 'text/plain'
+
+    @staticmethod
+    def serialise(message):
+        return b''.join([message.body, b"\n"])
+
+
+def create_serialiser(accept_string):
+    media_ranges = { media_range: { key: value for key, value in map(lambda x: x.split('=', 1), param_list) } for media_range, *param_list in map(lambda x: map(lambda y: y.strip(), x.split(';')), accept_string.decode('ascii').split(',')) }
+
+    for media_range, _ in sorted(media_ranges.items(), key=lambda x: float(x[1].get('q', 1.0)), reverse=True):
+        if fnmatch(TextEventStream.content_type(), media_range):
+            return TextEventStream
+        elif fnmatch(PlainTextStream.content_type(), media_range):
+            return PlainTextStream
+
+
 
 class Controller:
     def __init__(self, config):
@@ -35,13 +77,18 @@ class Controller:
         return channel
 
     def get(self, request, start_response):
-        start_response(200, [('content-type', 'text/event-stream'), ('cache-control', 'no-cache')])
-        return Channel(self, request)
+        accept = next(i for i in request.headers if i[0] == b'accept')
+        accept = accept[1] if not accept is None else b'text/event-stream'
+        serialiser = create_serialiser(accept)
+
+        start_response(200, [('content-type', serialiser.content_type()), ('cache-control', 'no-cache')])
+        return Channel(self, request, serialiser)
 
 class Channel:
-    def __init__(self, client, request):
+    def __init__(self, client, request, serialiser):
         self.client = client
         self.request = request
+        self.serialiser = serialiser
         self.request.eof = False
         self.buf = deque()
         self.channel = None
@@ -58,15 +105,9 @@ class Channel:
         else:
             if items > 1:
                 self.request.resume()
+            data = self.serialiser.serialise(message)
             message.ack()
-            body_in = io.BytesIO(message.body)
-            body_out = io.BytesIO()
-            for line in body_in:
-                body_out.write(b'data: ')
-                body_out.write(line)
-                body_out.write(b"\n")
-            body_out.write(b"\n")
-            return body_out.getvalue(), nghttp2.DATA_EOF if self.request.eof else nghttp2.DATA_OK
+            return data, nghttp2.DATA_EOF if self.request.eof else nghttp2.DATA_OK
 
     @asyncio.coroutine
     def read_amqp(self):
