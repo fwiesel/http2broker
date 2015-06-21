@@ -102,10 +102,12 @@ def generate_routes():
         module = import_module(backend_module)
         try:
             backend = module.create(config)
-            for method in ['GET', 'PUT', 'POST', 'DELETE']:
+            for method in [b'GET', b'PUT', b'POST', b'DELETE']:
                 try:
-                    m.connect("/q/%s" % k, conditions=dict(method=method), handler=getattr(backend, method.lower()))
-                    m.connect("/q/%s/{pattern:.*?}" % k, conditions=dict(method=method), handler=getattr(backend, method.lower()))
+                    attr = getattr(backend, method.decode().lower())
+                    conditions = dict(method=[method])
+                    m.connect("/q/%s" % k, conditions=conditions, handler=attr)
+                    m.connect("/q/%s/?{pattern:.*?}" % k, conditions=conditions, handler=attr)
                 except AttributeError:
                     pass
         except AttributeError as e:
@@ -124,7 +126,6 @@ class Session(Request):
         self.session_id = None
         self.response = {}
         self.match = None
-
 
     def get_backend(self, name):
         backend = Session.backend.get(name, None)
@@ -166,7 +167,10 @@ class Session(Request):
 
     def on_headers(self):
         self._setup_session()
-        self.match = routes.match(self.path.decode('utf-8'))
+        LOG.debug("{} {}".format(self.method, self.path))
+        self.match = routes.match(environ={'PATH_INFO': self.path.decode('utf-8'),
+                                           'REQUEST_METHOD': self.method})
+
         if self.match:
             self.response['body'] = self.match['handler'](self, self.start_response)
 

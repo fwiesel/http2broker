@@ -28,8 +28,16 @@
     @end
     </div>
     </div>
+    <div id="sendbb" class="bb">
+    <h2>Send Message</h2>
+        <div id="send_field">
+            <label for="txtSend">Send</label>
+            <input id="txtSend" type="text" name="send"/>
+            <input id="btnSend" type="button" value="Send" onclick="send_message(this);"/>
+        </div>
+    </div>
     <div id="streambb" class="bb">
-    <h2>Messages</h2>
+    <h2>Received Messages</h2>
     <table id="stream_table">
         <thead><tr><th>Source</th><th>Message</th></tr></thead>
         <tbody id="stream"></tbody>

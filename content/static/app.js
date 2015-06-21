@@ -33,3 +33,17 @@ function select_backend(item) {
         item.event_source = source;
     }
 }
+
+function send_message(item) {
+    var message = item.parentNode.querySelector('#txtSend').value;
+    var items = document.getElementById('backend').querySelectorAll('[state=selected]');
+    for (var i = 0; i < items.length; ++i) {
+        var item = items[i];
+        var request = new XMLHttpRequest();
+        request.open('PUT', '/q/' + item.id + '/?m=' + encodeURIComponent(message), true);
+        // request.setRequestHeader('content-type', 'text/plain');
+        // request.send(message);
+        request.send();
+    }
+
+}

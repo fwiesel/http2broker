@@ -6,6 +6,7 @@ import asyncio
 import urllib
 import io
 from fnmatch import fnmatch
+from urllib.parse import urlparse, parse_qs
 
 LOG = logging.getLogger(__name__)
 
@@ -47,34 +48,35 @@ def create_serialiser(accept_string):
     media_ranges = { media_range: { key: value for key, value in map(lambda x: x.split('=', 1), param_list) } for media_range, *param_list in map(lambda x: map(lambda y: y.strip(), x.split(';')), accept_string.decode('ascii').split(',')) }
 
     for media_range, _ in sorted(media_ranges.items(), key=lambda x: float(x[1].get('q', 1.0)), reverse=True):
-        if fnmatch(TextEventStream.content_type(), media_range):
-            return TextEventStream
-        elif fnmatch(PlainTextStream.content_type(), media_range):
-            return PlainTextStream
+        # if fnmatch(TextEventStream.content_type(), media_range):
+        return TextEventStream
+        #elif fnmatch(PlainTextStream.content_type(), media_range):
+        #    return PlainTextStream
 
 
 
-class Controller:
+class Controller(object):
     def __init__(self, config):
         self._config = config
         self._connection = None
+        self._sessions = {}
 
     @property
     def config(self):
         return self._config
 
-    @asyncio.coroutine
-    def open_channel(self):
-        if not self._connection is None:
-            channel = yield from self._connection.open_channel()
-        else:
-            LOG.debug("Connecting to %s", self._config)
-            self._connection, channel = yield from asynqp.connect_and_open_channel(host=self._config['host'],
-                                                                                   username=self._config['username'],
-                                                                                   password=self._config['password'],
-                                                                                   virtual_host=self._config['virtual_host'])
-
         return channel
+
+    def session(self, request):
+        try:
+            return self._sessions[request.session_id]
+        except KeyError:
+            session = Session(self.config, request)
+            self._sessions[request.session_id] = session
+            return session
+
+    def put(self, request, start_response):
+        return self.session(request).publish(request, start_response)
 
     def get(self, request, start_response):
         accept = next(i for i in request.headers if i[0] == b'accept')
@@ -82,19 +84,61 @@ class Controller:
         serialiser = create_serialiser(accept)
 
         start_response(200, [('content-type', serialiser.content_type()), ('cache-control', 'no-cache')])
-        return Channel(self, request, serialiser)
+        return self.session(request).subscribe(request, serialiser)
 
-class Channel:
-    def __init__(self, client, request, serialiser):
-        self.client = client
+class Session(object):
+    def __init__(self, config, request):
+        self._config = config
+        self._connection = None
+        self._channel = None
+        self._exchange = None
+        self.setup_done = asyncio.async(self.setup())
+
+    @asyncio.coroutine
+    def setup(self):
+        LOG.debug("Connecting to %s", self._config)
+        self._connection = yield from asynqp.connect(host=self._config['host'],
+                                                     username=self._config['username'],
+                                                     password=self._config['password'],
+                                                     virtual_host=self._config['virtual_host'])
+        self._channel = yield from self._connection.open_channel()
+        exchange_type = self._config.get('exchange_type', 'topic')
+        self._exchange = yield from self._channel.declare_exchange(self._config.get('exchange_name', "amq.{}".format(exchange_type)),
+                                                                   exchange_type, durable=False, auto_delete=False)
+
+    @property
+    def config(self):
+        return self._config
+
+    @property
+    def connection(self):
+        return self._connection
+
+    @property
+    def channel(self):
+        return self._channel
+
+    @property
+    def exchange(self):
+        return self._exchange
+
+    def subscribe(self, request, serialiser):
+        return Subscription(self, request, serialiser)
+
+    def publish(self, request, start_response):
+        return Sender(self, request, start_response)
+
+class Subscription(object):
+    def __init__(self, session, request, serialiser):
+        self.session = session
         self.request = request
         self.serialiser = serialiser
         self.request.eof = False
         self.buf = deque()
-        self.channel = None
         self.queue = None
-        self.exchange = None
-        asyncio.async(self.read_amqp())
+        self.binding = None
+        self.consumer = None
+        asyncio.async(self.setup())
 
     def __call__(self, n):
         items = len(self.buf)
@@ -110,18 +154,14 @@ class Channel:
             return data, nghttp2.DATA_EOF if self.request.eof else nghttp2.DATA_OK
 
     @asyncio.coroutine
-    def read_amqp(self):
-        self.channel = yield from self.client.open_channel()
-
-        exchange_type = self.client.config.get('exchange_type', 'topic')
-        self.exchange = yield from self.channel.declare_exchange(self.client.config.get('exchange_name', "amq.%s" % exchange_type), exchange_type, durable=False, auto_delete=False, arguments={})
-        self.queue = yield from self.channel.declare_queue(str(self.request.session_id), durable=False, auto_delete=False, arguments={'x-expires': 5*60*1000})
+    def setup(self):
+        yield from self.session.setup_done
+        self.queue = yield from self.session.channel.declare_queue(str(self.request.session_id), durable=False, auto_delete=False, arguments={'x-expires': 5*60*1000})
 
         pattern = urllib.parse.unquote(self.request.match.get('pattern', '#'))
         LOG.debug('Subscribing to %s', pattern)
-
-        yield from self.queue.bind(self.exchange, pattern)
-        yield from self.queue.consume(self.consume)
+        self.binding = yield from self.queue.bind(self.session.exchange, pattern)
+        self.consumer = yield from self.queue.consume(self.consume)
 
     def consume(self, message):
         self.buf.append(message)
@@ -129,7 +169,40 @@ class Channel:
 
     @asyncio.coroutine
     def close(self):
-        if not self.channel is None:
-           yield from self.channel.close()
+        if not self.binding is None:
+            yield from self.binding.unbind()
+        if not self.consumer is None:
+            yield from self.consumer.cancel()
+        if not self.queue is None:
+            yield from self.queue.delete(if_unused=False, if_empty=False)
 
+class Sender(object):
+    def __init__(self, session, request, start_response):
+        self.start_response = start_response
+        self.session = session
+        self.request = request
+        self.response = None
+        self.publisher = asyncio.async(self.publish())
+
+    def __call__(self, n):
+        if self.response is None:
+            return None, nghttp2.DATA_DEFERRED
+        else:
+            return self.response, nghttp2.DATA_EOF
+
+    @asyncio.coroutine
+    def publish(self):
+        yield from self.session.setup_done
+        data = parse_qs(urlparse(self.request.path).query)
+        try:
+            message = asynqp.Message(data[b'm'][0])
+            key = self.session.config.get('routing_key', data.get(b'k', ['default'])[0])
+            self.session.exchange.publish(message, key, mandatory=False)
+            self.start_response(200, [('content-type', 'application/json'), ('cache-control', 'no-cache')])
+            self.response = b'{}'
+            self.request.resume()
+        except KeyError as e:
+            self.start_response(500, [('content-type', 'application/json'), ('cache-control', 'no-cache')])
+            self.response = "{'e': {} }".format(e)
+            self.request.resume()
 
