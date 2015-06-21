@@ -40,10 +40,10 @@ function send_message(item) {
     for (var i = 0; i < items.length; ++i) {
         var item = items[i];
         var request = new XMLHttpRequest();
-        request.open('PUT', '/q/' + item.id + '/?m=' + encodeURIComponent(message), true);
-        // request.setRequestHeader('content-type', 'text/plain');
-        // request.send(message);
-        request.send();
+        request.open('POST', '/q/' + item.id, true); // + '/?m=' + encodeURIComponent(message), true);
+        request.setRequestHeader('content-type', 'text/plain');
+        request.send(message);
+        // request.send();
     }
 
 }

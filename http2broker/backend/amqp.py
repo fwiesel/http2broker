@@ -58,14 +58,11 @@ def create_serialiser(accept_string):
 class Controller(object):
     def __init__(self, config):
         self._config = config
-        self._connection = None
         self._sessions = {}
 
     @property
     def config(self):
         return self._config
-
-        return channel
 
     def session(self, request):
         try:
@@ -75,7 +72,7 @@ class Controller(object):
             self._sessions[request.session_id] = session
             return session
 
-    def put(self, request, start_response):
+    def post(self, request, start_response):
         return self.session(request).publish(request, start_response)
 
     def get(self, request, start_response):
@@ -176,13 +173,17 @@ class Subscription(object):
         if not self.queue is None:
             yield from self.queue.delete(if_unused=False, if_empty=False)
 
+    def on_request_done(self):
+        pass
+
+
 class Sender(object):
     def __init__(self, session, request, start_response):
         self.start_response = start_response
         self.session = session
         self.request = request
         self.response = None
-        self.publisher = asyncio.async(self.publish())
+        self.data = io.BytesIO()
 
     def __call__(self, n):
         if self.response is None:
@@ -193,10 +194,16 @@ class Sender(object):
     @asyncio.coroutine
     def publish(self):
         yield from self.session.setup_done
-        data = parse_qs(urlparse(self.request.path).query)
+        params = parse_qs(urlparse(self.request.path).query)
+        data = self.data.getvalue()
         try:
-            message = asynqp.Message(data[b'm'][0])
-            key = self.session.config.get('routing_key', data.get(b'k', ['default'])[0])
+            content_type = next(i for i in self.request.headers if i[0] == b'content-type')
+            if content_type:
+                content_type = content_type[1]
+            else:
+                content_type = 'text/plain'
+            message = asynqp.Message(data, content_type=content_type)
+            key = self.session.config.get('routing_key', params.get(b'k', ['default'])[0])
             self.session.exchange.publish(message, key, mandatory=False)
             self.start_response(200, [('content-type', 'application/json'), ('cache-control', 'no-cache')])
             self.response = b'{}'
@@ -205,4 +212,10 @@ class Sender(object):
             self.start_response(500, [('content-type', 'application/json'), ('cache-control', 'no-cache')])
             self.response = "{'e': {} }".format(e)
             self.request.resume()
+
+    def on_data(self, data):
+        self.data.write(data)
+
+    def on_request_done(self):
+        asyncio.async(self.publish())
 

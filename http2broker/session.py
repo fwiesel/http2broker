@@ -172,9 +172,22 @@ class Session(Request):
                                            'REQUEST_METHOD': self.method})
 
         if self.match:
-            self.response['body'] = self.match['handler'](self, self.start_response)
+            body = self.match['handler'](self, self.start_response)
+            self.response['body'] = body
 
         return self.send_response(**self.response)
+
+    def on_data(self, data):
+        try:
+            self.response['body'].on_data(data)
+        except (KeyError, AttributeError) as e:
+            LOG.debug("Could not pass on on_data: %s", e)
+
+    def on_request_done(self):
+        try:
+            self.response['body'].on_request_done()
+        except (KeyError, AttributeError) as e:
+            LOG.debug("Could not pass on on_request_done: %s", e)
 
     def on_close(self, error_code):
         try:
