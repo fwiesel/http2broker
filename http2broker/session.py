@@ -107,7 +107,7 @@ def generate_routes():
                     attr = getattr(backend, method.decode().lower())
                     conditions = dict(method=[method])
                     m.connect("/q/%s" % k, conditions=conditions, handler=attr)
-                    m.connect("/q/%s/?{pattern:.*?}" % k, conditions=conditions, handler=attr)
+                    m.connect("/q/%s/?{subscription:.*?}" % k, conditions=conditions, handler=attr)
                 except AttributeError:
                     pass
         except AttributeError as e:

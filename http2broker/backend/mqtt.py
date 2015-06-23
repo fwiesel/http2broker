@@ -9,9 +9,10 @@ import paho.mqtt.publish as publish
 import asyncio
 
 LOG = logging.getLogger(__name__)
-
-
 loop = asyncio.get_event_loop()
+
+def _topic_translation(key, translation=str.maketrans('/', '.')):
+    return key.translate(translation)
 
 
 def create(config):
@@ -157,10 +158,10 @@ class Subscription(object):
             return data, nghttp2.DATA_EOF if self.request.eof else nghttp2.DATA_OK
 
     def subscribe(self):
-        pattern = urllib.parse.unquote(self.request.match.get('pattern', self.session.config.get('subscription_topic', '/')))
-        self.session.client.subscribe(pattern)
+        subscription = _topic_translation(self.session.config.get('subscription', urllib.parse.unquote(self.request.match.get('subscription', '#'))))
+        self.session.client.subscribe(subscription)
         loop = asyncio.get_event_loop()
-        loop.call_soon(self.session.client.message_callback_add, pattern, self.consume)
+        loop.call_soon(self.session.client.message_callback_add, subscription, self.consume)
 
     def consume(self, client, userdata, message):
         self.buf.append(message)

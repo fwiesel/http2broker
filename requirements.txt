@@ -1,3 +1,4 @@
 wheezy.template
 routes
 paho-mqtt
+asyncio_redis
