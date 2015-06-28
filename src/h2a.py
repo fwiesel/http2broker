@@ -6,6 +6,7 @@ sys.path.append('.')
 import ssl
 import logging
 from http2broker.session import Session
+from http2broker.config import get_config
 import nghttp2
 
 LOG = logging.getLogger('http2broker')
@@ -15,15 +16,24 @@ def main():
     logging.basicConfig(level=logging.WARNING)
     LOG.setLevel(logging.DEBUG)
 
-    ctx = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH, cafile='demoCA/cacert.crt')
-    ctx.load_cert_chain('server.crt', 'server.key')
+    config = {
+        'cafile': 'cacert.crt',
+        'certfile': 'server.crt',
+        'keyfile': 'server.key',
+        'host': None,
+        'port': 443
+    }
+    config.update(get_config().get('h2a', {}))
+
+    ctx = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH, cafile=config['cafile'])
+    ctx.load_cert_chain(config['certfile'], config['keyfile'])
 
     if ctx.cert_store_stats()['x509_ca'] < 1:
         LOG.warning('Do not have any CAs, client certificate will not work')
 
     ctx.verify_mode = ssl.CERT_OPTIONAL
 
-    server = nghttp2.HTTP2Server(('127.0.0.1', 8443), Session, ssl=ctx)
+    server = nghttp2.HTTP2Server((config['host'], int(config['port'])), Session, ssl=ctx)
     server.serve_forever()
 
 

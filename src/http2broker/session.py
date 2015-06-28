@@ -51,7 +51,7 @@ def index(request, start_response):
             request.push(path, status=_status, headers=_headers, body=body)
         request._setup_session()
         start_response(200, [(b'content-type', 'text/html'), (b'cache-control', b'public, must-revalidate, max-age=60')])
-        return template.render({'backends': get_config()})
+        return template.render({'backends': { k: v for k,v in get_config().items() if 'module' in v }})
 
 def favicon(request, start_response):
     start_response(200, [(b'content-type', b'image-x-icon'), (b'cache-control', b'public, max-age=432000000'), last_modified(__file__)])
@@ -97,22 +97,23 @@ def generate_routes():
     m.connect('/favicon.ico', handler=favicon)
     for (k, config) in get_config().items():
         config = deepcopy(config)
-        backend_module = config.pop('module')
-        LOG.warn("Configuring %s", backend_module)
-        module = import_module(backend_module)
-        try:
-            backend = module.create(config)
-            for method in [b'GET', b'PUT', b'POST', b'DELETE']:
-                try:
-                    attr = getattr(backend, method.decode().lower())
-                    conditions = dict(method=[method])
-                    m.connect("/q/%s" % k, conditions=conditions, handler=attr)
-                    m.connect("/q/%s/?{subscription:.*?}" % k, conditions=conditions, handler=attr)
-                except AttributeError:
-                    pass
-        except AttributeError as e:
-            LOG.error("Could not create controller for %s: %s", k, backend_module)
-            LOG.error(e)
+        backend_module = config.pop('module', None)
+        if not backend_module is None:
+            LOG.warn("Configuring %s", backend_module)
+            module = import_module(backend_module)
+            try:
+                backend = module.create(config)
+                for method in [b'GET', b'PUT', b'POST', b'DELETE']:
+                    try:
+                        attr = getattr(backend, method.decode().lower())
+                        conditions = dict(method=[method])
+                        m.connect("/q/%s" % k, conditions=conditions, handler=attr)
+                        m.connect("/q/%s/?{subscription:.*?}" % k, conditions=conditions, handler=attr)
+                    except AttributeError:
+                        pass
+            except AttributeError as e:
+                LOG.error("Could not create controller for %s: %s", k, backend_module)
+                LOG.error(e)
     return m
 
 routes = generate_routes()
